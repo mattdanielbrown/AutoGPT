@@ -160,10 +160,7 @@ class OneShotAgentPromptStrategy(PromptStrategy):
             + (self._generate_os_info() if include_os_info else [])
             + [
                 self.config.body_template.format(
-                    constraints=format_numbered_list(
-                        ai_directives.constraints
-                        + self._generate_budget_constraint(ai_profile.api_budget)
-                    ),
+                    constraints=format_numbered_list(ai_directives.constraints),
                     resources=format_numbered_list(ai_directives.resources),
                     commands=self._generate_commands_list(commands),
                     best_practices=format_numbered_list(ai_directives.best_practices),
@@ -237,19 +234,6 @@ class OneShotAgentPromptStrategy(PromptStrategy):
         )
         return [f"The OS you are running on is: {os_info}"]
 
-    def _generate_budget_constraint(self, api_budget: float) -> list[str]:
-        """Generates the budget information part of the prompt.
-
-        Returns:
-            list[str]: The budget information part of the prompt, or an empty list.
-        """
-        if api_budget > 0.0:
-            return [
-                f"It takes money to let you run. "
-                f"Your API budget is ${api_budget:.3f}"
-            ]
-        return []
-
     def _generate_commands_list(self, commands: list[CompletionModelFunction]) -> str:
         """Lists the commands available to the agent.
 
@@ -291,4 +275,5 @@ class OneShotAgentPromptStrategy(PromptStrategy):
             assistant_reply_dict["use_tool"] = response.tool_calls[0].function
 
         parsed_response = OneShotAgentActionProposal.parse_obj(assistant_reply_dict)
+        parsed_response.raw_message = response.copy()
         return parsed_response

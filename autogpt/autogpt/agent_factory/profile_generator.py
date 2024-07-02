@@ -3,7 +3,6 @@ import logging
 
 from forge.config.ai_directives import AIDirectives
 from forge.config.ai_profile import AIProfile
-from forge.config.config import Config
 from forge.llm.prompting import ChatPrompt, LanguageModelClassification, PromptStrategy
 from forge.llm.providers import MultiProvider
 from forge.llm.providers.schema import (
@@ -14,6 +13,8 @@ from forge.llm.providers.schema import (
 from forge.models.config import SystemConfiguration, UserConfigurable
 from forge.models.json_schema import JSONSchema
 
+from autogpt.app.config import AppConfig
+
 logger = logging.getLogger(__name__)
 
 
@@ -21,53 +22,48 @@ class AgentProfileGeneratorConfiguration(SystemConfiguration):
     model_classification: LanguageModelClassification = UserConfigurable(
         default=LanguageModelClassification.SMART_MODEL
     )
-    _example_call: object = [
-        {
-            "type": "function",
-            "function": {
-                "name": "create_agent",
-                "arguments": {
-                    "name": "CMOGPT",
-                    "description": (
-                        "a professional digital marketer AI that assists Solopreneurs "
-                        "in growing their businesses by providing "
-                        "world-class expertise in solving marketing problems "
-                        "for SaaS, content products, agencies, and more."
+    _example_call: object = {
+        "name": "create_agent",
+        "arguments": {
+            "name": "CMOGPT",
+            "description": (
+                "a professional digital marketer AI that assists Solopreneurs "
+                "in growing their businesses by providing "
+                "world-class expertise in solving marketing problems "
+                "for SaaS, content products, agencies, and more."
+            ),
+            "directives": {
+                "best_practices": [
+                    (
+                        "Engage in effective problem-solving, prioritization, "
+                        "planning, and supporting execution to address your "
+                        "marketing needs as your virtual "
+                        "Chief Marketing Officer."
                     ),
-                    "directives": {
-                        "best_practices": [
-                            (
-                                "Engage in effective problem-solving, prioritization, "
-                                "planning, and supporting execution to address your "
-                                "marketing needs as your virtual "
-                                "Chief Marketing Officer."
-                            ),
-                            (
-                                "Provide specific, actionable, and concise advice to "
-                                "help you make informed decisions without the use of "
-                                "platitudes or overly wordy explanations."
-                            ),
-                            (
-                                "Identify and prioritize quick wins and cost-effective "
-                                "campaigns that maximize results with minimal time and "
-                                "budget investment."
-                            ),
-                            (
-                                "Proactively take the lead in guiding you and offering "
-                                "suggestions when faced with unclear information or "
-                                "uncertainty to ensure your marketing strategy remains "
-                                "on track."
-                            ),
-                        ],
-                        "constraints": [
-                            "Do not suggest illegal or unethical plans or strategies.",
-                            "Take reasonable budgetary limits into account.",
-                        ],
-                    },
-                },
+                    (
+                        "Provide specific, actionable, and concise advice to "
+                        "help you make informed decisions without the use of "
+                        "platitudes or overly wordy explanations."
+                    ),
+                    (
+                        "Identify and prioritize quick wins and cost-effective "
+                        "campaigns that maximize results with minimal time and "
+                        "budget investment."
+                    ),
+                    (
+                        "Proactively take the lead in guiding you and offering "
+                        "suggestions when faced with unclear information or "
+                        "uncertainty to ensure your marketing strategy remains "
+                        "on track."
+                    ),
+                ],
+                "constraints": [
+                    "Do not suggest illegal or unethical plans or strategies.",
+                    "Take reasonable budgetary limits into account.",
+                ],
             },
-        }
-    ]
+        },
+    }
     system_prompt: str = UserConfigurable(
         default=(
             "Your job is to respond to a user-defined task, given in triple quotes, by "
@@ -192,7 +188,6 @@ class AgentProfileGenerator(PromptStrategy):
 
         Returns:
             The parsed response.
-
         """
         try:
             if not response.tool_calls:
@@ -218,7 +213,7 @@ class AgentProfileGenerator(PromptStrategy):
 
 async def generate_agent_profile_for_task(
     task: str,
-    app_config: Config,
+    app_config: AppConfig,
     llm_provider: MultiProvider,
 ) -> tuple[AIProfile, AIDirectives]:
     """Generates an AIConfig object from the given string.

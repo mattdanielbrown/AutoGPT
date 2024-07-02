@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import inspect
 import logging
-from datetime import datetime
 from typing import TYPE_CHECKING, Any, ClassVar, Optional
 
 import sentry_sdk
@@ -19,7 +18,11 @@ from forge.components.action_history import (
     ActionHistoryComponent,
     EpisodicActionHistory,
 )
-from forge.components.code_executor.code_executor import CodeExecutorComponent
+from forge.components.action_history.action_history import ActionHistoryConfiguration
+from forge.components.code_executor.code_executor import (
+    CodeExecutorComponent,
+    CodeExecutorConfiguration,
+)
 from forge.components.context.context import AgentContext, ContextComponent
 from forge.components.file_manager import FileManagerComponent
 from forge.components.git_operations import GitOperationsComponent
@@ -53,20 +56,13 @@ from forge.utils.exceptions import (
 )
 from pydantic import Field
 
-from autogpt.app.log_cycle import (
-    CURRENT_CONTEXT_FILE_NAME,
-    NEXT_ACTION_FILE_NAME,
-    USER_INPUT_FILE_NAME,
-    LogCycleHandler,
-)
-
 from .prompt_strategies.one_shot import (
     OneShotAgentActionProposal,
     OneShotAgentPromptStrategy,
 )
 
 if TYPE_CHECKING:
-    from forge.config.config import Config
+    from autogpt.app.config import AppConfig
 
 logger = logging.getLogger(__name__)
 
@@ -99,13 +95,11 @@ class Agent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSettings]):
         settings: AgentSettings,
         llm_provider: MultiProvider,
         file_storage: FileStorage,
-        legacy_config: Config,
+        app_config: AppConfig,
     ):
         super().__init__(settings)
 
         self.llm_provider = llm_provider
-        self.ai_profile = settings.ai_profile
-        self.directives = settings.directives
         prompt_config = OneShotAgentPromptStrategy.default_configuration.copy(deep=True)
         prompt_config.use_functions_api = (
             settings.config.use_functions_api
@@ -116,40 +110,42 @@ class Agent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSettings]):
         self.commands: list[Command] = []
 
         # Components
-        self.system = SystemComponent(legacy_config, settings.ai_profile)
-        self.history = ActionHistoryComponent(
-            settings.history,
-            self.send_token_limit,
-            lambda x: self.llm_provider.count_tokens(x, self.llm.name),
-            legacy_config,
-            llm_provider,
-        ).run_after(WatchdogComponent)
-        self.user_interaction = UserInteractionComponent(legacy_config)
-        self.file_manager = FileManagerComponent(settings, file_storage)
+        self.system = SystemComponent()
+        self.history = (
+            ActionHistoryComponent(
+                settings.history,
+                lambda x: self.llm_provider.count_tokens(x, self.llm.name),
+                llm_provider,
+                ActionHistoryConfiguration(
+                    model_name=app_config.fast_llm, max_tokens=self.send_token_limit
+                ),
+            )
+            .run_after(WatchdogComponent)
+            .run_after(SystemComponent)
+        )
+        if not app_config.noninteractive_mode:
+            self.user_interaction = UserInteractionComponent()
+        self.file_manager = FileManagerComponent(file_storage, settings)
         self.code_executor = CodeExecutorComponent(
             self.file_manager.workspace,
-            settings,
-            legacy_config,
+            CodeExecutorConfiguration(
+                docker_container_name=f"{settings.agent_id}_sandbox"
+            ),
         )
-        self.git_ops = GitOperationsComponent(legacy_config)
-        self.image_gen = ImageGeneratorComponent(
-            self.file_manager.workspace, legacy_config
+        self.git_ops = GitOperationsComponent()
+        self.image_gen = ImageGeneratorComponent(self.file_manager.workspace)
+        self.web_search = WebSearchComponent()
+        self.web_selenium = WebSeleniumComponent(
+            llm_provider,
+            app_config.app_data_dir,
         )
-        self.web_search = WebSearchComponent(legacy_config)
-        self.web_selenium = WebSeleniumComponent(legacy_config, llm_provider, self.llm)
         self.context = ContextComponent(self.file_manager.workspace, settings.context)
         self.watchdog = WatchdogComponent(settings.config, settings.history).run_after(
             ContextComponent
         )
 
-        self.created_at = datetime.now().strftime("%Y%m%d_%H%M%S")
-        """Timestamp the agent was created; only used for structured debug logging."""
-
-        self.log_cycle_handler = LogCycleHandler()
-        """LogCycleHandler for structured debug logging."""
-
         self.event_history = settings.history
-        self.legacy_config = legacy_config
+        self.app_config = app_config
 
     async def propose_action(self) -> OneShotAgentActionProposal:
         """Proposes the next action to execute, based on the task and current state.
@@ -182,16 +178,7 @@ class Agent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSettings]):
             ai_profile=self.state.ai_profile,
             ai_directives=directives,
             commands=function_specs_from_commands(self.commands),
-            include_os_info=self.legacy_config.execute_local_commands,
-        )
-
-        self.log_cycle_handler.log_count_within_cycle = 0
-        self.log_cycle_handler.log_cycle(
-            self.state.ai_profile.ai_name,
-            self.created_at,
-            self.config.cycle_count,
-            prompt.raw(),
-            CURRENT_CONTEXT_FILE_NAME,
+            include_os_info=self.code_executor.config.execute_local_commands,
         )
 
         logger.debug(f"Executing prompt:\n{dump_prompt(prompt)}")
@@ -216,14 +203,6 @@ class Agent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSettings]):
             prefill_response=prompt.prefill_response,
         )
         result = response.parsed_result
-
-        self.log_cycle_handler.log_cycle(
-            self.state.ai_profile.ai_name,
-            self.created_at,
-            self.config.cycle_count,
-            result.thoughts.dict(),
-            NEXT_ACTION_FILE_NAME,
-        )
 
         await self.run_pipeline(AfterParse.after_parse, result)
 
@@ -268,13 +247,6 @@ class Agent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSettings]):
         self, denied_proposal: OneShotAgentActionProposal, user_feedback: str
     ) -> ActionResult:
         result = ActionInterruptedByHuman(feedback=user_feedback)
-        self.log_cycle_handler.log_cycle(
-            self.state.ai_profile.ai_name,
-            self.created_at,
-            self.config.cycle_count,
-            user_feedback,
-            USER_INPUT_FILE_NAME,
-        )
 
         await self.run_pipeline(AfterExecute.after_execute, result)
 
@@ -317,7 +289,7 @@ class Agent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSettings]):
             command
             for command in self.commands
             if not any(
-                name in self.legacy_config.disabled_commands for name in command.names
+                name in self.app_config.disabled_commands for name in command.names
             )
         ]
 

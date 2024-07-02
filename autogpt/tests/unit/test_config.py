@@ -8,16 +8,15 @@ from typing import Any
 from unittest import mock
 
 import pytest
-from forge.config.config import Config, ConfigBuilder
-from forge.llm.providers.schema import ChatModelInfo, ModelProviderName
 from openai.pagination import AsyncPage
 from openai.types import Model
 from pydantic import SecretStr
 
-from autogpt.app.configurator import GPT_3_MODEL, GPT_4_MODEL, apply_overrides_to_config
+from autogpt.app.config import GPT_3_MODEL, GPT_4_MODEL, AppConfig, ConfigBuilder
+from autogpt.app.configurator import apply_overrides_to_config
 
 
-def test_initial_values(config: Config) -> None:
+def test_initial_values(config: AppConfig) -> None:
     """
     Test if the initial values of the config class attributes are set correctly.
     """
@@ -30,7 +29,7 @@ def test_initial_values(config: Config) -> None:
 @pytest.mark.asyncio
 @mock.patch("openai.resources.models.AsyncModels.list")
 async def test_fallback_to_gpt3_if_gpt4_not_available(
-    mock_list_models: Any, config: Config
+    mock_list_models: Any, config: AppConfig
 ) -> None:
     """
     Test if models update to gpt-3.5-turbo if gpt-4 is not available.
@@ -46,17 +45,13 @@ async def test_fallback_to_gpt3_if_gpt4_not_available(
         )
     )
 
-    await apply_overrides_to_config(
-        config=config,
-        gpt3only=False,
-        gpt4only=False,
-    )
+    await apply_overrides_to_config(config=config)
 
     assert config.fast_llm == GPT_3_MODEL
     assert config.smart_llm == GPT_3_MODEL
 
 
-def test_missing_azure_config(config: Config) -> None:
+def test_missing_azure_config(config: AppConfig) -> None:
     assert config.openai_credentials is not None
 
     config_file = config.app_data_dir / "azure_config.yaml"
@@ -73,7 +68,7 @@ def test_missing_azure_config(config: Config) -> None:
 
 
 @pytest.fixture
-def config_with_azure(config: Config):
+def config_with_azure(config: AppConfig):
     config_file = config.app_data_dir / "azure_config.yaml"
     config_file.write_text(
         f"""
@@ -96,7 +91,7 @@ azure_model_map:
     del os.environ["AZURE_CONFIG_FILE"]
 
 
-def test_azure_config(config_with_azure: Config) -> None:
+def test_azure_config(config_with_azure: AppConfig) -> None:
     assert (credentials := config_with_azure.openai_credentials) is not None
     assert credentials.api_type == SecretStr("azure")
     assert credentials.api_version == SecretStr("2023-06-01-preview")
@@ -139,43 +134,3 @@ def test_azure_config(config_with_azure: Config) -> None:
         credentials.get_model_access_kwargs(config_with_azure.smart_llm)["model"]
         == "FAST-LLM_ID"
     )
-
-
-@pytest.mark.asyncio
-async def test_create_config_gpt4only(config: Config) -> None:
-    with mock.patch(
-        "forge.llm.providers.multi.MultiProvider.get_available_models"
-    ) as mock_get_models:
-        mock_get_models.return_value = [
-            ChatModelInfo(
-                name=GPT_4_MODEL,
-                provider_name=ModelProviderName.OPENAI,
-                max_tokens=4096,
-            )
-        ]
-        await apply_overrides_to_config(
-            config=config,
-            gpt4only=True,
-        )
-        assert config.fast_llm == GPT_4_MODEL
-        assert config.smart_llm == GPT_4_MODEL
-
-
-@pytest.mark.asyncio
-async def test_create_config_gpt3only(config: Config) -> None:
-    with mock.patch(
-        "forge.llm.providers.multi.MultiProvider.get_available_models"
-    ) as mock_get_models:
-        mock_get_models.return_value = [
-            ChatModelInfo(
-                name=GPT_3_MODEL,
-                provider_name=ModelProviderName.OPENAI,
-                max_tokens=4096,
-            )
-        ]
-        await apply_overrides_to_config(
-            config=config,
-            gpt3only=True,
-        )
-        assert config.fast_llm == GPT_3_MODEL
-        assert config.smart_llm == GPT_3_MODEL
