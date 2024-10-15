@@ -4,12 +4,25 @@ Welcome to the AutoGPT Documentation.
 
 The AutoGPT project consists of four main components:
 
-* The [Agent](#agent) &ndash; also known as just "AutoGPT"
-* The [Benchmark](#benchmark) &ndash; AKA `agbenchmark`
-* The [Forge](#forge)
-* The [Frontend](#frontend)
+- The [Server](#server) &ndash; known as the "AutoGPT Platform"
+- The [Agent](#agent) &ndash; also known as just "AutoGPT"
+- The [Benchmark](#benchmark) &ndash; AKA `agbenchmark`
+- The [Forge](#forge)
+- The [Frontend](#frontend)
 
 To tie these together, we also have a [CLI] at the root of the project.
+
+## 🌐 Server
+
+<!-- Setup, then Advanced, then New Blocks -->
+
+**[📖 Setup](server/setup.md)**
+&ensp;|&ensp;
+**[📖 Advanced Setup](server/advanced_setup.md)**
+&ensp;|&ensp;
+**[📖 Making New Blocks](server/new_blocks.md)**
+
+The server is the backbone of the New AutoGPT project. It provides the infrastructure for the agents to run, and the UI for you to interact with them. It integrates with the Forge, Agent, and a bespoke UI to provide a seamless experience.
 
 ---
 
@@ -35,7 +48,7 @@ We continue to develop this project with the goal of providing access to AI assi
 
 ## 🎯 Benchmark
 
-**[🗒️ Readme](https://github.com/Significant-Gravitas/AutoGPT/blob/master/benchmark/README.md)**
+**[🗒️ Readme](https://github.com/Significant-Gravitas/AutoGPT/blob/master/classic/benchmark/README.md)**
 
 Measure your agent's performance! The `agbenchmark` can be used with any agent that supports the agent protocol, and the integration with the project's [CLI] makes it even easier to use with AutoGPT and forge-based agents. The benchmark offers a stringent testing environment. Our framework allows for autonomous, objective performance evaluations, ensuring your agents are primed for real-world action.
 
@@ -63,7 +76,7 @@ Forge your own agent! The Forge is a ready-to-go template for your agent applica
 
 ## 💻 Frontend
 
-**[🗒️ Readme](https://github.com/Significant-Gravitas/AutoGPT/blob/master/frontend/README.md)**
+**[🗒️ Readme](https://github.com/Significant-Gravitas/AutoGPT/blob/master/classic/frontend/README.md)**
 
 An easy-to-use and open source frontend for any Agent Protocol-compliant agent.
 
